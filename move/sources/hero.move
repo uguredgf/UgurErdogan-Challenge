@@ -1,6 +1,9 @@
 module challenge::hero;
 
 use std::string::String;
+use sui::object::{Self, ID, UID};
+use sui::transfer;
+use sui::tx_context::{Self, TxContext};
 
 // ========= STRUCTS =========
 public struct Hero has key, store {
@@ -19,16 +22,25 @@ public struct HeroMetadata has key, store {
 
 #[allow(lint(self_transfer))]
 public fun create_hero(name: String, image_url: String, power: u64, ctx: &mut TxContext) {
-    
-    // TODO: Create a new Hero struct with the given parameters
-        // Hints:
-        // Use object::new(ctx) to create a unique ID
-        // Set name, image_url, and power fields
-    // TODO: Transfer the hero to the transaction sender
-    // TODO: Create HeroMetadata and freeze it for tracking
-        // Hints:
-        // Use ctx.epoch_timestamp_ms() for timestamp
-    //TODO: Use transfer::freeze_object() to make metadata immutable
+    // 1. Yeni bir Hero nesnesi oluşturuyoruz.
+    let hero = Hero {
+        id: object::new(ctx), // Benzersiz bir ID oluşturur.
+        name: name,           // Parametre olarak gelen ismi atar.
+        image_url: image_url, // Parametre olarak gelen resim linkini atar.
+        power: power,         // Parametre olarak gelen gücü atar.
+    };
+
+    // 2. Oluşturulan kahramanı, bu işlemi çağıran kişinin cüzdanına gönderiyoruz.
+    transfer::public_transfer(hero, tx_context::sender(ctx));
+
+    // 3. Kahraman oluşturulduğunu takip etmek için bir metadata nesnesi yaratıyoruz.
+    let metadata = HeroMetadata {
+        id: object::new(ctx), // Metadata için de benzersiz bir ID.
+        timestamp: tx_context::epoch_timestamp_ms(ctx), // İşlemin yapıldığı zaman damgası.
+    };
+
+    // 4. Metadata nesnesini "dondurarak" herkesin görebileceği, değiştirilemez bir kayıt haline getiriyoruz.
+    transfer::freeze_object(metadata);
 }
 
 // ========= GETTER FUNCTIONS =========
@@ -51,4 +63,3 @@ public fun hero_image_url(hero: &Hero): String {
 public fun hero_id(hero: &Hero): ID {
     object::id(hero)
 }
-

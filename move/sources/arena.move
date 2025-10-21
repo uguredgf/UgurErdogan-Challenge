@@ -1,6 +1,9 @@
 module challenge::arena;
 
-use challenge::hero::Hero;
+use challenge::hero::{Self, Hero};
+use sui::object::{Self, ID, UID};
+use sui::transfer;
+use sui::tx_context::{Self, TxContext};
 use sui::event;
 
 // ========= STRUCTS =========
@@ -27,29 +30,54 @@ public struct ArenaCompleted has copy, drop {
 // ========= FUNCTIONS =========
 
 public fun create_arena(hero: Hero, ctx: &mut TxContext) {
+    // Arena nesnesini oluşturuyoruz.
+    let arena = Arena {
+        id: object::new(ctx),
+        warrior: hero,
+        owner: tx_context::sender(ctx),
+    };
 
-    // TODO: Create an arena object
-        // Hints:
-        // Use object::new(ctx) for unique ID
-        // Set warrior field to the hero parameter
-        // Set owner to ctx.sender()
-    // TODO: Emit ArenaCreated event with arena ID and timestamp (Don't forget to use ctx.epoch_timestamp_ms(), object::id(&arena))
-    // TODO: Use transfer::share_object() to make it publicly tradeable
+    // Arena oluşturulduğuna dair bir "event" (olay kaydı) yayınlıyoruz.
+    event::emit(ArenaCreated {
+        arena_id: object::id(&arena),
+        timestamp: tx_context::epoch_timestamp_ms(ctx),
+    });
+
+    // Arenayı herkesin görebileceği ve etkileşime girebileceği şekilde paylaşıyoruz.
+    transfer::share_object(arena);
 }
 
 #[allow(lint(self_transfer))]
 public fun battle(hero: Hero, arena: Arena, ctx: &mut TxContext) {
+    // Arena nesnesini parçalarına ayırarak içindeki bilgilere ulaşıyoruz.
+    // Bu işlemden sonra 'arena' değişkeni yok olur, sadece parçaları kalır.
+    let Arena { id, warrior, owner } = arena;
     
-    // TODO: Implement battle logic
-        // Hints:
-        // Destructure arena to get id, warrior, and owner
-    // TODO: Compare hero.hero_power() with warrior.hero_power()
-        // Hints: 
-        // If hero wins: both heroes go to ctx.sender()
-        // If warrior wins: both heroes go to battle place owner
-    // TODO:  Emit BattlePlaceCompleted event with winner/loser IDs (Don't forget to use object::id(&warrior) or object::id(&hero) ). 
-        // Hints:  
-        // You have to emit this inside of the if else statements
-    // TODO: Delete the battle place ID 
-}
+    // Saldıran kahramanın gücü, arenadaki kahramanın gücünden fazlaysa...
+    if (hero::hero_power(&hero) > hero::hero_power(&warrior)) {
+        // Kazanan ve kaybeden bilgilerini içeren olayı yayınla.
+        event::emit(ArenaCompleted {
+            winner_hero_id: object::id(&hero),
+            loser_hero_id: object::id(&warrior),
+            timestamp: tx_context::epoch_timestamp_ms(ctx)
+        });
 
+        // Her iki kahramanı da savaşı başlatan kişiye (saldırana) transfer et.
+        transfer::public_transfer(hero, tx_context::sender(ctx));
+        transfer::public_transfer(warrior, tx_context::sender(ctx));
+    } else { // Eğer arenadaki kahramanın gücü daha fazlaysa veya eşitse...
+        // Kazanan ve kaybeden bilgilerini içeren olayı yayınla.
+        event::emit(ArenaCompleted {
+            winner_hero_id: object::id(&warrior),
+            loser_hero_id: object::id(&hero),
+            timestamp: tx_context::epoch_timestamp_ms(ctx)
+        });
+
+        // Her iki kahramanı da arenanın sahibine transfer et.
+        transfer::public_transfer(hero, owner);
+        transfer::public_transfer(warrior, owner);
+    };
+
+    // Savaş bittiği için artık arenaya ihtiyaç yok. Arenayı yok et.
+    object::delete(id);
+}
